@@ -45,6 +45,12 @@ config SOC_FLASH_NRF_RADIO_SYNC_NONE
 	  disable synchronization between flash memory driver and radio.
 endchoice
 
+config SOC_FLASH_NRF_RADIO_SYNC_RUNTIME
+    bool "Track controller state for Nordic flash radio synchronization"
+    depends on SOC_FLASH_NRF_RADIO_SYNC_TICKER && BT_LL_SW_SPLIT
+    help
+      Use ordinary NVMC access while the Bluetooth controller is stopped.
+
 config SOC_FLASH_NRF_PARTIAL_ERASE
 	bool "Nordic nRFx flash driver partial erase"
 	depends on HAS_HW_NRF_NVMC_PE

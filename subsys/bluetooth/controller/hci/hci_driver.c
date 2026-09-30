@@ -796,6 +796,12 @@ static int iso_handle(const struct device *dev, struct net_buf *buf)
 }
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
+#if IS_ENABLED(CONFIG_BT_CTLR_HCI_LIFECYCLE_LOCK)
+#define hci_driver_send  hci_driver_unlocked_send
+#define hci_driver_open  hci_driver_unlocked_open
+#define hci_driver_close hci_driver_unlocked_close
+#endif
+
 static int hci_driver_send(const struct device *dev, struct net_buf *buf)
 {
 	uint8_t type;
@@ -899,6 +905,45 @@ static int hci_driver_close(const struct device *dev)
 
 	return 0;
 }
+
+#if IS_ENABLED(CONFIG_BT_CTLR_HCI_LIFECYCLE_LOCK)
+#undef hci_driver_send
+#undef hci_driver_open
+#undef hci_driver_close
+
+K_MUTEX_DEFINE(hci_driver_lifecycle_lock);
+
+static int hci_driver_send(const struct device *dev, struct net_buf *buf)
+{
+	k_mutex_lock(&hci_driver_lifecycle_lock, K_FOREVER);
+	struct hci_driver_data *data = dev->data;
+	int err;
+	if (!data->recv) {
+		LOG_WRN("Rejecting HCI send after controller close");
+		err = -ESHUTDOWN;
+	} else {
+		err = hci_driver_unlocked_send(dev, buf);
+	}
+	k_mutex_unlock(&hci_driver_lifecycle_lock);
+	return err;
+}
+
+static int hci_driver_open(const struct device *dev, bt_hci_recv_t recv)
+{
+	k_mutex_lock(&hci_driver_lifecycle_lock, K_FOREVER);
+	int err = hci_driver_unlocked_open(dev, recv);
+	k_mutex_unlock(&hci_driver_lifecycle_lock);
+	return err;
+}
+
+static int hci_driver_close(const struct device *dev)
+{
+	k_mutex_lock(&hci_driver_lifecycle_lock, K_FOREVER);
+	int err = hci_driver_unlocked_close(dev);
+	k_mutex_unlock(&hci_driver_lifecycle_lock);
+	return err;
+}
+#endif
 
 static DEVICE_API(bt_hci, hci_driver_api) = {
 	.open = hci_driver_open,

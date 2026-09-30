@@ -74,6 +74,15 @@ static struct k_sem sem_lock;
 #define SYNC_UNLOCK()
 #endif
 
+#if IS_ENABLED(CONFIG_SOC_FLASH_NRF_RADIO_SYNC_RUNTIME)
+static bool controller_stopped;
+static bool runtime_sync_required(void)
+{
+	return !controller_stopped && nrf_flash_sync_is_required();
+}
+#define nrf_flash_sync_is_required runtime_sync_required
+#endif
+
 #if NRF52_ERRATA_242_PRESENT
 #include <hal/nrf_power.h>
 static int suspend_pofwarn(void);
@@ -594,3 +603,31 @@ static void restore_pofwarn(void)
 	}
 }
 #endif  /* NRF52_ERRATA_242_PRESENT */
+
+#if IS_ENABLED(CONFIG_SOC_FLASH_NRF_RADIO_SYNC_RUNTIME)
+/* Synchronize controller state changes with flash write/erase selection. */
+int __real_ll_init(struct k_sem *sem_rx);
+int __real_ll_deinit(void);
+
+int __wrap_ll_init(struct k_sem *sem_rx)
+{
+	SYNC_LOCK();
+	int err = __real_ll_init(sem_rx);
+	if (!err) {
+		controller_stopped = false;
+	}
+	SYNC_UNLOCK();
+	return err;
+}
+
+int __wrap_ll_deinit(void)
+{
+	SYNC_LOCK();
+	int err = __real_ll_deinit();
+	if (!err) {
+		controller_stopped = true;
+	}
+	SYNC_UNLOCK();
+	return err;
+}
+#endif

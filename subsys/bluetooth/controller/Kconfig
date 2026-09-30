@@ -150,6 +150,12 @@ config BT_LL_SW_SPLIT
 	help
 	  Use Zephyr software Bluetooth LE Link Layer ULL LLL split implementation.
 
+config BT_CTLR_HCI_LIFECYCLE_LOCK
+    bool "Serialize HCI send with controller open and close"
+    depends on BT_LL_SW_SPLIT
+    help
+      Prevent a queued host send from racing with controller close.
+
 config BT_CTLR_HCI
 	bool "Host Controller Interface (HCI)"
 	default y
